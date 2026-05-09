@@ -41,7 +41,6 @@ Deployment:
 
 ## Project Structure
 
-```txt
 privai-mvp/
   backend/
     app/
@@ -99,3 +98,61 @@ Current Scope
 
 Sprint 1 only performs detection and returns JSON.
 Redaction, Operational Zone, Sovereign Vault, database, and audit logging will be implemented in the next sprints.
+```
+
+## Sprint 2: Government Redaction Pipeline
+
+Sprint 2 adds the government-first redaction pipeline.
+
+### Main Flow
+
+```txt
+Upload image
+→ Local YOLO inference
+→ Sensitive object detection
+→ Black-box redaction
+→ Save redacted output to Operational Zone
+→ Return redacted file URL and non-private metadata
+```
+
+Redaction Profiles
+
+Government profile:
+
+profile=government
+mode=black_box
+
+Live webcam development profile:
+
+profile=live_webcam
+mode=blur
+API Endpoints
+GET  /api/redaction-config
+POST /api/redact
+GET  /api/files/redacted/{filename}
+Test Government Redaction
+curl.exe -X POST "http://127.0.0.1:8000/api/redact?confidence_threshold=0.35&profile=government" ^
+  -F "file=@D:\Lomba\privai\sample\test.jpg"
+Operational Zone Rule
+
+Operational Zone stores only:
+
+- redacted image
+- non-private metadata
+- detection summary
+- latency
+- redaction mode
+- status information
+
+Operational Zone does not store the original private image.
+
+
+Untuk PowerShell, command multiline pakai backtick, bukan `^`. Jadi di README boleh tulis versi PowerShell juga:
+
+```md
+PowerShell:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/api/redact?confidence_threshold=0.35&profile=government" `
+  -F "file=@D:\Lomba\privai\sample\test.jpg"
+```
