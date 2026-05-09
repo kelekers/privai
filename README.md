@@ -156,3 +156,58 @@ PowerShell:
 curl.exe -X POST "http://127.0.0.1:8000/api/redact?confidence_threshold=0.35&profile=government" `
   -F "file=@D:\Lomba\privai\sample\test.jpg"
 ```
+
+## Sprint 3: Sovereign Vault and Government Access API
+
+Sprint 3 adds a Sovereign Vault simulation with hybrid encryption, per-session DEK, key versioning, key rotation, and controlled government access.
+
+### Encryption Model
+
+PrivAI uses envelope encryption:
+
+```txt
+Original file
+→ encrypted using fresh AES-256 DEK per upload/session
+→ DEK wrapped using Sovereign Vault public key
+→ encrypted bundle stored in Sovereign Vault
+
+The DEK is generated repeatedly per file/session and is never stored in plaintext.
+
+Key Model
+Vault public key:
+- shared to User Zone as trusted public key
+- used to wrap DEK
+
+Vault private key:
+- stays inside Sovereign Vault simulation
+- never sent to User Zone
+- versioned using key_id and key_version
+- rotated using admin endpoint
+Government Access API
+
+Original files are not directly accessible by user or frontend.
+
+Access flow:
+
+1. Government officer creates access request.
+2. Approver approves request.
+3. One-time token is issued.
+4. Original file is decrypted only through Government Access API / Vault Gateway.
+5. Access is audited.
+Useful Endpoints
+GET  /api/crypto/key-info
+POST /api/crypto/rotate-vault-key
+POST /api/government/access-requests
+POST /api/government/access-requests/{request_id}/approve
+GET  /api/government/access-requests/{request_id}/secure-original
+Class Filtering
+
+Disable redaction for selected classes:
+
+curl.exe -X POST "http://127.0.0.1:8000/api/redact?profile=government&disabled_classes=Wajah" `
+  -F "file=@D:\Lomba\privai\sample\test.jpg"
+
+Only redact selected classes:
+
+curl.exe -X POST "http://127.0.0.1:8000/api/redact?profile=government&active_classes=NIK_Teks" `
+  -F "file=@D:\Lomba\privai\sample\test.jpg"

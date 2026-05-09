@@ -10,11 +10,11 @@ env/
 .mypy_cache/
 .ruff_cache/
 
-# Environment
+# Environment & Config
 .env
 *.env.local
 
-# Node
+# Node.js
 node_modules/
 dist/
 build/
@@ -28,25 +28,25 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Database and runtime storage
-*.db
-*.sqlite
-*.sqlite3
-
-# Runtime-generated files
-backend/storage/operational_zone/redacted/*
-backend/storage/operational_zone/metadata/*
-backend/storage/sovereign_vault/encrypted_original/*
-backend/storage/sovereign_vault/metadata/*
-backend/storage/audit/*
-
-# Keep folder structure
-!backend/storage/**/.gitkeep
-
-# Uploaded/raw datasets should never be committed
+# Datasets & Uploads
 backend/datasets/
 backend/uploads/
 backend/raw_data/
 
-# Keep model allowed because final MVP needs it.
-# If model becomes >100MB, use Git LFS instead.
+# Storage & Runtime Files
+*.db
+*.sqlite
+*.sqlite3
+backend/storage/*.db
+backend/storage/*.sqlite
+backend/storage/*.sqlite3
+backend/storage/audit/*
+backend/storage/operational_zone/redacted/*
+backend/storage/operational_zone/metadata/*
+backend/storage/sovereign_vault/encrypted_original/*
+backend/storage/sovereign_vault/metadata/*
+backend/storage/sovereign_vault/keys_simulated/*
+backend/storage/user_zone/trusted_vault_keys/*
+
+# Keep folder structure (don't ignore .gitkeep files)
+!backend/storage/**/.gitkeep
