@@ -211,3 +211,44 @@ Only redact selected classes:
 
 curl.exe -X POST "http://127.0.0.1:8000/api/redact?profile=government&active_classes=NIK_Teks" `
   -F "file=@D:\Lomba\privai\sample\test.jpg"
+
+## Sprint 4: Frontend Dashboard MVP
+
+Sprint 4 adds the main dashboard for demo.
+
+### Dashboard Features
+
+```txt
+- Upload image
+- Original preview from browser local file
+- Redacted output from Operational Zone
+- Detection table
+- Latency and device metrics
+- Operational Zone status
+- Sovereign Vault status
+- Active class filtering
+- Disabled class filtering
+Run Backend
+cd D:\Lomba\privai\backend
+.\.venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+Run Frontend
+cd D:\Lomba\privai\frontend
+npm run dev
+
+Open:
+
+http://localhost:5173
+Important UI Privacy Note
+
+The original preview shown in the browser is only a local preview of the selected file.
+
+Operational Zone stores only:
+
+- redacted image
+- non-private metadata
+- detection summary
+- latency
+- redaction status
+
+The original file is encrypted and stored in Sovereign Vault only. Plaintext original access is not exposed in the normal user dashboard.
