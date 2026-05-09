@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+COPY models ./models
+
+RUN mkdir -p \
+    storage/operational_zone/redacted \
+    storage/operational_zone/metadata \
+    storage/sovereign_vault/encrypted_original \
+    storage/sovereign_vault/metadata \
+    storage/audit
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
