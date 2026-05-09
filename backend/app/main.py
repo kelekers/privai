@@ -1,9 +1,18 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from pathlib import Path
+import os
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
-import os
-from pathlib import Path
+
+from app.ai.detector import create_detector_from_env
+from app.utils.image_utils import (
+    get_image_shape,
+    read_image_bytes_to_cv2,
+    validate_image_filename,
+)
 
 load_dotenv()
 
@@ -14,6 +23,8 @@ CORS_ORIGINS = os.getenv(
     "CORS_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173",
 ).split(",")
+
+detector = create_detector_from_env()
 
 
 def ensure_runtime_directories() -> None:
@@ -30,12 +41,26 @@ def ensure_runtime_directories() -> None:
         Path(directory).mkdir(parents=True, exist_ok=True)
 
 
-ensure_runtime_directories()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ensure_runtime_directories()
+
+    try:
+        detector.load()
+        print("[PrivAI] YOLO model loaded successfully.")
+        print(f"[PrivAI] Device: {detector.device}")
+        print(f"[PrivAI] Model classes: {detector.get_model_names()}")
+    except Exception as exc:
+        print(f"[PrivAI] Warning: failed to load YOLO model: {exc}")
+
+    yield
+
 
 app = FastAPI(
     title=APP_NAME,
     version="0.1.0",
     description="Government-first local privacy protection MVP for PrivAI.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -53,6 +78,8 @@ class HealthResponse(BaseModel):
     environment: str
     operational_zone: str
     sovereign_vault: str
+    model_loaded: bool
+    device: str
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -63,6 +90,8 @@ def health_check():
         environment=APP_ENV,
         operational_zone="ready",
         sovereign_vault="ready",
+        model_loaded=detector.is_loaded(),
+        device=detector.device,
     )
 
 
@@ -74,10 +103,59 @@ def model_info():
     return {
         "model_path": model_path,
         "model_exists": exists,
-        "device": os.getenv("MODEL_DEVICE", "auto"),
+        "model_loaded": detector.is_loaded(),
+        "device": detector.device,
+        "model_classes": detector.get_model_names(),
         "expected_classes": os.getenv(
             "DEFAULT_ACTIVE_CLASSES",
             "KTP,SIM,Paspor,NIK_Teks,Wajah,Plat_Nomor",
         ).split(","),
-        "note": "Actual YOLO loading will be implemented in Sprint 1.",
     }
+
+
+@app.post("/api/infer")
+async def infer_image(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Query(
+        default=0.35,
+        ge=0.01,
+        le=0.99,
+        description="YOLO confidence threshold",
+    ),
+):
+    if not detector.is_loaded():
+        raise HTTPException(
+            status_code=503,
+            detail="YOLO model is not loaded. Check MODEL_PATH and model file.",
+        )
+
+    try:
+        validate_image_filename(file.filename or "")
+        image_bytes = await file.read()
+        image = read_image_bytes_to_cv2(image_bytes)
+        height, width, channels = get_image_shape(image)
+
+        result = detector.predict(
+            image=image,
+            confidence_threshold=confidence_threshold,
+        )
+
+        return {
+            "filename": file.filename,
+            "image": {
+                "width": width,
+                "height": height,
+                "channels": channels,
+            },
+            "confidence_threshold": confidence_threshold,
+            **result,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Inference failed: {str(exc)}",
+        )

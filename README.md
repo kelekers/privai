@@ -71,3 +71,31 @@ privai-mvp/
   docs/
   docker-compose.yml
   README.md
+
+## Sprint 1: YOLO Inference API
+
+### Run Backend
+
+```bash
+cd backend
+.venv\Scripts\activate
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+Check API
+GET http://127.0.0.1:8000/api/health
+GET http://127.0.0.1:8000/api/model-info
+Test Inference
+
+Open Swagger UI:
+
+http://127.0.0.1:8000/docs
+
+Use:
+
+POST /api/infer
+
+Upload an image and set confidence threshold.
+
+Current Scope
+
+Sprint 1 only performs detection and returns JSON.
+Redaction, Operational Zone, Sovereign Vault, database, and audit logging will be implemented in the next sprints.
