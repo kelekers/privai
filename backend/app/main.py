@@ -4,10 +4,11 @@ import os
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Body, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
+from typing import List, Optional
+from pydantic import BaseModel, Field
 
 from app.ai.class_map import normalize_class_name
 from app.ai.detector import create_detector_from_env
@@ -17,6 +18,11 @@ from app.core.redaction_config import (
     get_allowed_redaction_modes,
     get_redaction_rule,
     is_allowed_redaction_mode,
+)
+from app.core.runtime_policy import (
+    load_runtime_policy,
+    reset_runtime_policy,
+    update_runtime_policy,
 )
 from app.db.database import SessionLocal, init_db
 from app.db.repositories import (
@@ -79,6 +85,7 @@ def ensure_runtime_directories() -> None:
         "./storage/user_zone/trusted_vault_keys",
         "./storage/audit",
         "./models",
+        "./storage/config",
     ]
 
     for directory in directories:
@@ -256,6 +263,15 @@ class HealthResponse(BaseModel):
     model_loaded: bool
     device: str
 
+class RuntimePolicyUpdateRequest(BaseModel):
+    policy_name: Optional[str] = Field(default=None, max_length=80)
+    confidence_threshold: Optional[float] = Field(default=None, ge=0.01, le=0.99)
+    profile: Optional[str] = None
+    redaction_mode: Optional[str] = None
+    active_classes: Optional[List[str]] = None
+    disabled_classes: Optional[List[str]] = None
+    label_text: Optional[str] = Field(default=None, max_length=30)
+    injection_note: Optional[str] = Field(default=None, max_length=240)
 
 @app.get("/api/health", response_model=HealthResponse)
 def health_check():
@@ -308,6 +324,73 @@ def redaction_config():
             "Live webcam profile uses blur by default. "
             "Class filtering is post-processing only and does not retrain the model."
         ),
+    }
+
+@app.get("/api/runtime-policy")
+def get_runtime_policy():
+    return {
+        "policy": load_runtime_policy(),
+        "security": {
+            "arbitrary_code_execution": False,
+            "eval_enabled": False,
+            "allowed_keys_only": True,
+            "note": (
+                "Dynamic Injection is handled as validated runtime configuration. "
+                "It never executes arbitrary code."
+            ),
+        },
+    }
+
+
+@app.put("/api/runtime-policy")
+def put_runtime_policy(
+    payload: RuntimePolicyUpdateRequest = Body(...),
+):
+    try:
+        update_payload = payload.model_dump(exclude_none=True)
+        updated_policy = update_runtime_policy(update_payload)
+
+        with SessionLocal() as db:
+            create_audit_log(
+                db,
+                record_id="system",
+                zone="Dynamic Injection",
+                event_type="runtime_policy_updated",
+                actor="demo_operator",
+                action="Updated runtime redaction policy.",
+                details=updated_policy,
+            )
+            db.commit()
+
+        return {
+            "status": "updated",
+            "policy": updated_policy,
+            "note": "Runtime policy updated safely without changing source code.",
+        }
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/runtime-policy/reset")
+def post_reset_runtime_policy():
+    policy = reset_runtime_policy()
+
+    with SessionLocal() as db:
+        create_audit_log(
+            db,
+            record_id="system",
+            zone="Dynamic Injection",
+            event_type="runtime_policy_reset",
+            actor="demo_operator",
+            action="Reset runtime policy to default government profile.",
+            details=policy,
+        )
+        db.commit()
+
+    return {
+        "status": "reset",
+        "policy": policy,
     }
 
 
@@ -444,6 +527,10 @@ async def redact_uploaded_image(
     redaction_mode: str | None = Query(default=None),
     active_classes: str | None = Query(default=None),
     disabled_classes: str | None = Query(default=None),
+    use_runtime_policy: bool = Query(
+        default=False,
+        description="If true, ignore manual query policy and use validated runtime policy.",
+    ),
 ):
     if not detector.is_loaded():
         raise HTTPException(
@@ -461,6 +548,17 @@ async def redact_uploaded_image(
         image = read_image_bytes_to_cv2(image_bytes)
         height, width, channels = get_image_shape(image)
 
+        runtime_policy = None
+
+        if use_runtime_policy:
+            runtime_policy = load_runtime_policy()
+
+            confidence_threshold = float(runtime_policy["confidence_threshold"])
+            profile = runtime_policy["profile"]
+            redaction_mode = runtime_policy["redaction_mode"]
+            active_classes = ",".join(runtime_policy["active_classes"])
+            disabled_classes = ",".join(runtime_policy["disabled_classes"])
+
         rule = get_redaction_rule(profile)
         selected_mode = redaction_mode or rule["mode"]
 
@@ -475,6 +573,11 @@ async def redact_uploaded_image(
             active_classes_override=active_classes,
             disabled_classes=disabled_classes,
         )
+
+        selected_label_text = rule["label_text"]
+
+        if runtime_policy is not None:
+            selected_label_text = runtime_policy.get("label_text") or rule["label_text"]
 
         inference_result = detector.predict(
             image=image,
@@ -494,7 +597,7 @@ async def redact_uploaded_image(
             mode=selected_mode,
             active_classes=selected_active_classes,
             label_enabled=rule["label_enabled"],
-            label_text=rule["label_text"],
+            label_text=selected_label_text,
         )
 
         saved_redacted = save_redacted_image_to_operational_zone(
@@ -513,6 +616,11 @@ async def redact_uploaded_image(
                 "active_classes": selected_active_classes,
                 "disabled_classes": parse_class_csv(disabled_classes),
                 "confidence_threshold": confidence_threshold,
+                "dynamic_injection": {
+                    "use_runtime_policy": use_runtime_policy,
+                    "policy_name": runtime_policy["policy_name"] if runtime_policy else None,
+                    "injection_note": runtime_policy["injection_note"] if runtime_policy else None,
+                },
                 "image": {
                     "width": width,
                     "height": height,
@@ -588,6 +696,7 @@ async def redact_uploaded_image(
                 details={
                     "redacted_filename": saved_redacted["filename"],
                     "stores_private_original": False,
+                    "use_runtime_policy": use_runtime_policy,
                 },
             )
 
@@ -607,6 +716,25 @@ async def redact_uploaded_image(
                 },
             )
 
+            if use_runtime_policy:
+                create_audit_log(
+                    db,
+                    record_id=record_id,
+                    zone="Dynamic Injection",
+                    event_type="runtime_policy_applied",
+                    actor="system",
+                    action="Applied validated runtime policy during redaction.",
+                    details={
+                        "policy_name": runtime_policy["policy_name"],
+                        "confidence_threshold": confidence_threshold,
+                        "profile": profile,
+                        "redaction_mode": selected_mode,
+                        "active_classes": selected_active_classes,
+                        "disabled_classes": parse_class_csv(disabled_classes),
+                        "label_text": selected_label_text,
+                    },
+                )
+
             db.commit()
 
         return {
@@ -623,7 +751,16 @@ async def redact_uploaded_image(
                 "redaction_mode": selected_mode,
                 "active_classes": selected_active_classes,
                 "disabled_classes": parse_class_csv(disabled_classes),
+                "label_text": selected_label_text,
                 "note": "Class filtering is post-processing only. The YOLO model is not retrained.",
+            },
+            "dynamic_injection": {
+                "use_runtime_policy": use_runtime_policy,
+                "policy": runtime_policy,
+                "note": (
+                    "Runtime policy is validated configuration only. "
+                    "No arbitrary code execution is allowed."
+                ),
             },
             "confidence_threshold": confidence_threshold,
             "device": inference_result["device"],
@@ -661,7 +798,6 @@ async def redact_uploaded_image(
             status_code=500,
             detail=f"Redaction and vault storage failed: {str(exc)}",
         )
-
 
 @app.get("/api/files/redacted/{filename}")
 def get_redacted_file(filename: str):

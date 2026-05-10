@@ -19,6 +19,8 @@ import {
   getStorageRecords,
   redactImage,
 } from "./api/client";
+import DynamicInjectionPanel from "./components/DynamicInjectionPanel";
+import GovernmentAccessConsole from "./components/GovernmentAccessConsole";
 
 const CLASS_PRESETS = ["KTP", "SIM", "Paspor", "NIK_Teks", "Wajah", "Plat_Nomor"];
 
@@ -201,6 +203,7 @@ export default function App() {
   const [redactionMode, setRedactionMode] = useState("default");
   const [activeClasses, setActiveClasses] = useState("");
   const [disabledClasses, setDisabledClasses] = useState("");
+  const [useRuntimePolicy, setUseRuntimePolicy] = useState(false);
 
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -272,6 +275,7 @@ export default function App() {
         redactionMode,
         activeClasses,
         disabledClasses,
+        useRuntimePolicy,
       });
 
       setResult(data);
@@ -305,6 +309,14 @@ export default function App() {
       .map((item) => item.trim())
       .filter(Boolean),
   );
+
+  function handleApplyRuntimePolicyToForm(policy) {
+    setConfidenceThreshold(policy.confidenceThreshold);
+    setProfile(policy.profile);
+    setRedactionMode(policy.redactionMode);
+    setActiveClasses(policy.activeClasses);
+    setDisabledClasses(policy.disabledClasses);
+  }
 
   return (
     <main className="min-h-screen px-5 py-6 text-slate-100 md:px-8">
@@ -467,6 +479,20 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+                
+                <label className="flex items-start gap-3 rounded-2xl border border-purple-300/20 bg-purple-300/10 p-4 text-sm text-purple-100">
+                  <input
+                    type="checkbox"
+                    checked={useRuntimePolicy}
+                    onChange={(event) => setUseRuntimePolicy(event.target.checked)}
+                    className="mt-1 accent-purple-300"
+                  />
+                  <span>
+                    <span className="font-semibold">Use Runtime Policy</span>
+                    <br />
+                    Backend akan memakai policy Dynamic Injection yang tersimpan, bukan nilai manual di form.
+                  </span>
+                </label>
 
                 <button
                   type="submit"
@@ -508,6 +534,8 @@ export default function App() {
                 </div>
               </div>
             </Card>
+
+            <DynamicInjectionPanel onApplyToForm={handleApplyRuntimePolicyToForm} />
           </div>
 
           <div className="space-y-6">
@@ -619,6 +647,8 @@ export default function App() {
                 </Card>
               </>
             )}
+
+            <GovernmentAccessConsole latestRecordId={result?.record_id || records?.[0]?.record_id || ""} />
 
             <Card>
               <SectionTitle
