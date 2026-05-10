@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import base64
 from pathlib import Path
 import os
 import uuid
@@ -57,6 +58,7 @@ from app.services.storage_service import (
     save_redacted_image_to_operational_zone,
 )
 from app.utils.image_utils import (
+    cv2_image_to_bytes,
     get_image_shape,
     read_image_bytes_to_cv2,
     validate_image_filename,
@@ -798,6 +800,140 @@ async def redact_uploaded_image(
             status_code=500,
             detail=f"Redaction and vault storage failed: {str(exc)}",
         )
+
+
+
+@app.post("/api/live/redact-frame")
+async def live_redact_frame(
+    file: UploadFile = File(...),
+    confidence_threshold: float = Query(
+        default=0.25,
+        ge=0.01,
+        le=0.99,
+        description="YOLO confidence threshold for live webcam frame.",
+    ),
+    redaction_mode: str | None = Query(
+        default=None,
+        description="Optional override for live mode. Default is blur.",
+    ),
+    active_classes: str | None = Query(
+        default=None,
+        description="Optional comma-separated whitelist, e.g. Wajah,NIK_Teks.",
+    ),
+    disabled_classes: str | None = Query(
+        default=None,
+        description="Optional comma-separated blacklist, e.g. Wajah.",
+    ),
+):
+    """
+    Secondary/development track endpoint for live webcam privacy filtering.
+
+    This endpoint intentionally does not store frames in Operational Zone
+    and does not encrypt frames into Sovereign Vault. It only returns an
+    ephemeral redacted frame for live preview.
+    """
+    if not detector.is_loaded():
+        raise HTTPException(
+            status_code=503,
+            detail="YOLO model is not loaded. Check MODEL_PATH and model file.",
+        )
+
+    try:
+        validate_image_filename(file.filename or "webcam_frame.jpg")
+
+        image_bytes = await file.read()
+        image = read_image_bytes_to_cv2(image_bytes)
+        height, width, channels = get_image_shape(image)
+
+        profile = RedactionProfile.LIVE_WEBCAM.value
+        rule = get_redaction_rule(profile)
+
+        selected_mode = redaction_mode or rule["mode"]
+
+        if not is_allowed_redaction_mode(selected_mode):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported redaction mode: {selected_mode}",
+            )
+
+        selected_active_classes = build_active_classes(
+            default_classes=rule["active_classes"],
+            active_classes_override=active_classes,
+            disabled_classes=disabled_classes,
+        )
+
+        inference_result = detector.predict(
+            image=image,
+            confidence_threshold=confidence_threshold,
+        )
+
+        detected_classes = sorted(
+            {
+                normalize_class_name(detection.get("class_name", "Unknown"))
+                for detection in inference_result["detections"]
+            }
+        )
+
+        redaction_result = redact_image(
+            image=image,
+            detections=inference_result["detections"],
+            mode=selected_mode,
+            active_classes=selected_active_classes,
+            label_enabled=False,
+            label_text="",
+        )
+
+        redacted_bytes = cv2_image_to_bytes(
+            redaction_result["image"],
+            extension=".jpg",
+        )
+
+        redacted_base64 = base64.b64encode(redacted_bytes).decode("utf-8")
+
+        return {
+            "scope": "live_webcam_development_track",
+            "mime_type": "image/jpeg",
+            "frame_image_base64": redacted_base64,
+            "image": {
+                "width": width,
+                "height": height,
+                "channels": channels,
+            },
+            "redaction_policy": {
+                "profile": profile,
+                "redaction_mode": selected_mode,
+                "active_classes": selected_active_classes,
+                "disabled_classes": parse_class_csv(disabled_classes),
+                "note": "Live webcam mode is ephemeral and uses blur by default.",
+            },
+            "storage_policy": {
+                "stored_in_operational_zone": False,
+                "stored_in_sovereign_vault": False,
+                "reason": "Live webcam frames are processed ephemerally for privacy preview only.",
+            },
+            "confidence_threshold": confidence_threshold,
+            "device": inference_result["device"],
+            "latency_ms": inference_result["latency_ms"],
+            "detection_count": inference_result["detection_count"],
+            "redacted_count": redaction_result["redacted_count"],
+            "detected_classes": detected_classes,
+            "detections": inference_result["detections"],
+            "redacted_detections": redaction_result["redacted_detections"],
+            "skipped_detections": redaction_result["skipped_detections"],
+        }
+
+    except HTTPException:
+        raise
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Live frame redaction failed: {str(exc)}",
+        )
+
 
 @app.get("/api/files/redacted/{filename}")
 def get_redacted_file(filename: str):

@@ -177,3 +177,43 @@ export async function downloadGovernmentOriginal({
     status: "downloaded",
   };
 }
+
+
+export async function redactLiveFrame({
+  frameBlob,
+  confidenceThreshold,
+  redactionMode,
+  activeClasses,
+  disabledClasses,
+}) {
+  const formData = new FormData();
+  formData.append("file", frameBlob, "webcam_frame.jpg");
+
+  const params = new URLSearchParams();
+  params.set("confidence_threshold", String(confidenceThreshold ?? 0.25));
+
+  if (redactionMode && redactionMode !== "default") {
+    params.set("redaction_mode", redactionMode);
+  }
+
+  if (activeClasses?.trim()) {
+    params.set("active_classes", activeClasses.trim());
+  }
+
+  if (disabledClasses?.trim()) {
+    params.set("disabled_classes", disabledClasses.trim());
+  }
+
+  const response = await apiClient.post(
+    `/api/live/redact-frame?${params.toString()}`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  );
+
+  return response.data;
+}
+

@@ -21,6 +21,7 @@ import {
 } from "./api/client";
 import DynamicInjectionPanel from "./components/DynamicInjectionPanel";
 import GovernmentAccessConsole from "./components/GovernmentAccessConsole";
+import LiveWebcamDemo from "./components/LiveWebcamDemo";
 
 const CLASS_PRESETS = ["KTP", "SIM", "Paspor", "NIK_Teks", "Wajah", "Plat_Nomor"];
 
@@ -647,6 +648,8 @@ export default function App() {
                 </Card>
               </>
             )}
+
+            <LiveWebcamDemo />
 
             <GovernmentAccessConsole latestRecordId={result?.record_id || records?.[0]?.record_id || ""} />
 

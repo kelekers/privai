@@ -298,3 +298,44 @@ Controlled access flow:
 4. Download original through Government Access API / Vault Gateway
 5. Mark token as used
 6. Write audit log
+## Sprint 6: Live Webcam Secondary Track
+
+Sprint 6 adds a secondary live webcam privacy filter.
+
+### Main Difference from Government Mode
+
+```txt
+Government mode:
+- black-box redaction
+- stores redacted output in Operational Zone
+- encrypts original into Sovereign Vault
+
+Live webcam mode:
+- blur redaction by default
+- ephemeral frame processing
+- does not store frames in Operational Zone
+- does not store frames in Sovereign Vault
+Backend Endpoint
+POST /api/live/redact-frame
+
+The endpoint returns:
+
+- redacted frame as base64 image
+- latency
+- detection_count
+- redacted_count
+- storage policy showing no persistence
+Frontend Panel
+
+Open:
+
+http://localhost:5173
+
+Use the Live Webcam Privacy Filter panel:
+
+1. Start Camera
+2. Process Frame
+3. Start Continuous if performance allows
+Demo Note
+
+This feature is a secondary development track for social media or live video privacy use cases. The main MVP remains government-first document and identity protection.
