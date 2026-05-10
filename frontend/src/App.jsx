@@ -22,6 +22,7 @@ import {
 import DynamicInjectionPanel from "./components/DynamicInjectionPanel";
 import GovernmentAccessConsole from "./components/GovernmentAccessConsole";
 import LiveWebcamDemo from "./components/LiveWebcamDemo";
+import TurboLivePreview from "./components/TurboLivePreview";
 
 const CLASS_PRESETS = ["KTP", "SIM", "Paspor", "NIK_Teks", "Wajah", "Plat_Nomor"];
 
@@ -648,6 +649,8 @@ export default function App() {
                 </Card>
               </>
             )}
+
+            <TurboLivePreview />
 
             <LiveWebcamDemo />
 

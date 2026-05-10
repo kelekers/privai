@@ -49,19 +49,18 @@ def _apply_blur(
     if roi.size == 0:
         return
 
-    width = x2 - x1
-    height = y2 - y1
+    height, width = roi.shape[:2]
 
-    kernel_width = max(15, width // 5)
-    kernel_height = max(15, height // 5)
+    # Fast blur for live video:
+    # Downscale -> upscale -> light Gaussian.
+    # This is much faster than using a very large Gaussian kernel.
+    small_width = max(8, width // 16)
+    small_height = max(8, height // 16)
 
-    if kernel_width % 2 == 0:
-        kernel_width += 1
+    small = cv2.resize(roi, (small_width, small_height), interpolation=cv2.INTER_LINEAR)
+    blurred = cv2.resize(small, (width, height), interpolation=cv2.INTER_LINEAR)
+    blurred = cv2.GaussianBlur(blurred, (7, 7), 0)
 
-    if kernel_height % 2 == 0:
-        kernel_height += 1
-
-    blurred = cv2.GaussianBlur(roi, (kernel_width, kernel_height), 0)
     image[y1:y2, x1:x2] = blurred
 
 
