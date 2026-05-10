@@ -52,6 +52,7 @@ from app.services.government_access_service import (
     is_datetime_expired,
 )
 from app.services.live_turbo_service import LiveTurboSession
+from app.services.robustness_service import robust_predict_with_tta
 from app.services.redaction_service import redact_image
 from app.services.storage_service import (
     get_redacted_dir,
@@ -535,6 +536,14 @@ async def redact_uploaded_image(
         default=False,
         description="If true, ignore manual query policy and use validated runtime policy.",
     ),
+    document_tta: bool = Query(
+        default=True,
+        description="If true, run document rotation TTA for government upload robustness.",
+    ),
+    tta_angles: str = Query(
+        default="0,180",
+        description="Comma-separated TTA angles. Allowed: 0,90,180,270.",
+    ),
 ):
     if not detector.is_loaded():
         raise HTTPException(
@@ -583,10 +592,19 @@ async def redact_uploaded_image(
         if runtime_policy is not None:
             selected_label_text = runtime_policy.get("label_text") or rule["label_text"]
 
-        inference_result = detector.predict(
-            image=image,
-            confidence_threshold=confidence_threshold,
-        )
+        if document_tta and profile == RedactionProfile.GOVERNMENT.value:
+            inference_result = robust_predict_with_tta(
+                detector=detector,
+                image=image,
+                confidence_threshold=confidence_threshold,
+                tta_angles=tta_angles,
+                iou_threshold=0.55,
+            )
+        else:
+            inference_result = detector.predict(
+                image=image,
+                confidence_threshold=confidence_threshold,
+            )
 
         detected_classes = sorted(
             {
@@ -756,7 +774,9 @@ async def redact_uploaded_image(
                 "active_classes": selected_active_classes,
                 "disabled_classes": parse_class_csv(disabled_classes),
                 "label_text": selected_label_text,
-                "note": "Class filtering is post-processing only. The YOLO model is not retrained.",
+                "document_tta": document_tta,
+                "tta_angles": tta_angles if document_tta else None,
+                "note": "Class filtering and document TTA are post-processing only. The YOLO model is not retrained.",
             },
             "dynamic_injection": {
                 "use_runtime_policy": use_runtime_policy,
@@ -767,6 +787,7 @@ async def redact_uploaded_image(
                 ),
             },
             "confidence_threshold": confidence_threshold,
+            "robustness": inference_result.get("robustness"),
             "device": inference_result["device"],
             "latency_ms": inference_result["latency_ms"],
             "detection_count": inference_result["detection_count"],
@@ -818,6 +839,12 @@ def start_turbo_live(
     target_width: int = Query(default=640, ge=240, le=1280),
     infer_interval_ms: int = Query(default=90, ge=30, le=1000),
     jpeg_quality: int = Query(default=75, ge=40, le=95),
+    box_hold_ms: int = Query(
+        default=700,
+        ge=0,
+        le=2000,
+        description="How long to keep last boxes when detection temporarily disappears.",
+    ),
 ):
     if not detector.is_loaded():
         raise HTTPException(
@@ -853,6 +880,7 @@ def start_turbo_live(
         target_width=target_width,
         infer_interval_ms=infer_interval_ms,
         jpeg_quality=jpeg_quality,
+        box_hold_ms=box_hold_ms,
     )
 
     try:
@@ -874,6 +902,7 @@ def start_turbo_live(
             "target_width": target_width,
             "infer_interval_ms": infer_interval_ms,
             "jpeg_quality": jpeg_quality,
+            "box_hold_ms": box_hold_ms,
         },
         "performance_note": (
             "Capture/output runs continuously. YOLO inference runs in a background thread. "

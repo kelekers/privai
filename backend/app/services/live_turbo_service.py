@@ -46,6 +46,7 @@ class LiveTurboSession:
         target_width: int = 640,
         infer_interval_ms: int = 90,
         jpeg_quality: int = 75,
+        box_hold_ms: int = 700,
     ) -> None:
         self.detector = detector
         self.camera_index = camera_index
@@ -55,6 +56,8 @@ class LiveTurboSession:
         self.target_width = target_width
         self.infer_interval_ms = infer_interval_ms
         self.jpeg_quality = jpeg_quality
+        self.box_hold_ms = box_hold_ms
+        self.last_detection_ts = 0.0
 
         self.running = False
         self.lock = threading.Lock()
@@ -162,13 +165,26 @@ class LiveTurboSession:
                     confidence_threshold=self.confidence_threshold,
                 )
 
+                detections = result.get("detections", [])
+                now = time.time()
+
                 with self.lock:
-                    self.latest_detections = result.get("detections", [])
+                    if detections:
+                        self.latest_detections = detections
+                        self.last_detection_ts = now
+                    else:
+                        detection_age_ms = (now - self.last_detection_ts) * 1000
+
+                        if detection_age_ms > self.box_hold_ms:
+                            self.latest_detections = []
+
                     self.latest_stats = {
                         "latency_ms": result.get("latency_ms", 0),
-                        "detection_count": result.get("detection_count", 0),
+                        "raw_detection_count": result.get("detection_count", 0),
+                        "detection_count": len(self.latest_detections),
                         "redacted_count": 0,
                         "device": result.get("device", "unknown"),
+                        "box_hold_ms": self.box_hold_ms,
                     }
                     self.inference_counter += 1
 
@@ -192,6 +208,7 @@ class LiveTurboSession:
                 "target_width": self.target_width,
                 "infer_interval_ms": self.infer_interval_ms,
                 "jpeg_quality": self.jpeg_quality,
+                "box_hold_ms": self.box_hold_ms,
                 "frame_counter": self.frame_counter,
                 "inference_counter": self.inference_counter,
                 "latest_stats": self.latest_stats,

@@ -228,6 +228,7 @@ export async function startTurboLive({
   targetWidth = 640,
   inferIntervalMs = 90,
   jpegQuality = 75,
+  boxHoldMs = 700,
 }) {
   const params = new URLSearchParams();
 
@@ -238,6 +239,7 @@ export async function startTurboLive({
   params.set("target_width", String(targetWidth));
   params.set("infer_interval_ms", String(inferIntervalMs));
   params.set("jpeg_quality", String(jpegQuality));
+  params.set("box_hold_ms", String(boxHoldMs));
 
   if (activeClasses?.trim()) {
     params.set("active_classes", activeClasses.trim());
