@@ -7,7 +7,7 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -51,6 +51,7 @@ from app.services.government_access_service import (
     hash_access_token,
     is_datetime_expired,
 )
+from app.services.live_turbo_service import LiveTurboSession
 from app.services.redaction_service import redact_image
 from app.services.storage_service import (
     get_redacted_dir,
@@ -75,6 +76,7 @@ CORS_ORIGINS = os.getenv(
 ).split(",")
 
 detector = create_detector_from_env()
+TURBO_LIVE_SESSIONS = {}
 
 
 def ensure_runtime_directories() -> None:
@@ -801,6 +803,143 @@ async def redact_uploaded_image(
             detail=f"Redaction and vault storage failed: {str(exc)}",
         )
 
+
+
+
+
+@app.post("/api/live/turbo/start")
+def start_turbo_live(
+    session_id: str = Query(default="default"),
+    camera_index: int = Query(default=0, ge=0, le=10),
+    confidence_threshold: float = Query(default=0.25, ge=0.01, le=0.99),
+    redaction_mode: str = Query(default="blur"),
+    active_classes: str | None = Query(default=None),
+    disabled_classes: str | None = Query(default=None),
+    target_width: int = Query(default=640, ge=240, le=1280),
+    infer_interval_ms: int = Query(default=90, ge=30, le=1000),
+    jpeg_quality: int = Query(default=75, ge=40, le=95),
+):
+    if not detector.is_loaded():
+        raise HTTPException(
+            status_code=503,
+            detail="YOLO model is not loaded. Check MODEL_PATH and model file.",
+        )
+
+    if not is_allowed_redaction_mode(redaction_mode):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported redaction mode: {redaction_mode}",
+        )
+
+    rule = get_redaction_rule(RedactionProfile.LIVE_WEBCAM.value)
+
+    selected_active_classes = build_active_classes(
+        default_classes=rule["active_classes"],
+        active_classes_override=active_classes,
+        disabled_classes=disabled_classes,
+    )
+
+    old_session = TURBO_LIVE_SESSIONS.get(session_id)
+
+    if old_session is not None:
+        old_session.stop()
+
+    session = LiveTurboSession(
+        detector=detector,
+        camera_index=camera_index,
+        confidence_threshold=confidence_threshold,
+        redaction_mode=redaction_mode,
+        active_classes=selected_active_classes,
+        target_width=target_width,
+        infer_interval_ms=infer_interval_ms,
+        jpeg_quality=jpeg_quality,
+    )
+
+    try:
+        session.start()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    TURBO_LIVE_SESSIONS[session_id] = session
+
+    return {
+        "status": "started",
+        "session_id": session_id,
+        "stream_url": f"/api/live/turbo/mjpeg?session_id={session_id}",
+        "policy": {
+            "confidence_threshold": confidence_threshold,
+            "redaction_mode": redaction_mode,
+            "active_classes": selected_active_classes,
+            "disabled_classes": parse_class_csv(disabled_classes),
+            "target_width": target_width,
+            "infer_interval_ms": infer_interval_ms,
+            "jpeg_quality": jpeg_quality,
+        },
+        "performance_note": (
+            "Capture/output runs continuously. YOLO inference runs in a background thread. "
+            "Output can remain smooth by reusing the latest detection boxes."
+        ),
+        "integration_note": (
+            "This turbo mode is suitable as the base for OBS Virtual Camera or pyvirtualcam integration."
+        ),
+    }
+
+
+@app.post("/api/live/turbo/stop")
+def stop_turbo_live(
+    session_id: str = Query(default="default"),
+):
+    session = TURBO_LIVE_SESSIONS.get(session_id)
+
+    if session is None:
+        return {
+            "status": "not_running",
+            "session_id": session_id,
+        }
+
+    session.stop()
+    TURBO_LIVE_SESSIONS.pop(session_id, None)
+
+    return {
+        "status": "stopped",
+        "session_id": session_id,
+    }
+
+
+@app.get("/api/live/turbo/status")
+def turbo_live_status(
+    session_id: str = Query(default="default"),
+):
+    session = TURBO_LIVE_SESSIONS.get(session_id)
+
+    if session is None:
+        return {
+            "running": False,
+            "session_id": session_id,
+        }
+
+    return {
+        "session_id": session_id,
+        **session.get_status(),
+    }
+
+
+@app.get("/api/live/turbo/mjpeg")
+def turbo_live_mjpeg(
+    session_id: str = Query(default="default"),
+):
+    session = TURBO_LIVE_SESSIONS.get(session_id)
+
+    if session is None or not session.running:
+        raise HTTPException(
+            status_code=404,
+            detail="Turbo live session is not running. Start it first using /api/live/turbo/start.",
+        )
+
+    return StreamingResponse(
+        session.mjpeg_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @app.post("/api/live/redact-frame")

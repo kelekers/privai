@@ -217,3 +217,57 @@ export async function redactLiveFrame({
   return response.data;
 }
 
+
+export async function startTurboLive({
+  sessionId = "default",
+  cameraIndex = 0,
+  confidenceThreshold = 0.25,
+  redactionMode = "blur",
+  activeClasses = "",
+  disabledClasses = "",
+  targetWidth = 640,
+  inferIntervalMs = 90,
+  jpegQuality = 75,
+}) {
+  const params = new URLSearchParams();
+
+  params.set("session_id", sessionId);
+  params.set("camera_index", String(cameraIndex));
+  params.set("confidence_threshold", String(confidenceThreshold));
+  params.set("redaction_mode", redactionMode);
+  params.set("target_width", String(targetWidth));
+  params.set("infer_interval_ms", String(inferIntervalMs));
+  params.set("jpeg_quality", String(jpegQuality));
+
+  if (activeClasses?.trim()) {
+    params.set("active_classes", activeClasses.trim());
+  }
+
+  if (disabledClasses?.trim()) {
+    params.set("disabled_classes", disabledClasses.trim());
+  }
+
+  const response = await apiClient.post(`/api/live/turbo/start?${params.toString()}`);
+  return response.data;
+}
+
+export async function stopTurboLive(sessionId = "default") {
+  const params = new URLSearchParams();
+  params.set("session_id", sessionId);
+
+  const response = await apiClient.post(`/api/live/turbo/stop?${params.toString()}`);
+  return response.data;
+}
+
+export async function getTurboLiveStatus(sessionId = "default") {
+  const params = new URLSearchParams();
+  params.set("session_id", sessionId);
+
+  const response = await apiClient.get(`/api/live/turbo/status?${params.toString()}`);
+  return response.data;
+}
+
+export function buildTurboMjpegUrl(sessionId = "default") {
+  return `${API_BASE_URL}/api/live/turbo/mjpeg?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}`;
+}
+
