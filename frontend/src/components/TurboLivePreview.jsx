@@ -25,6 +25,7 @@ export default function TurboLivePreview() {
   const [targetWidth, setTargetWidth] = useState(640);
   const [inferIntervalMs, setInferIntervalMs] = useState(90);
   const [jpegQuality, setJpegQuality] = useState(75);
+  const [boxHoldMs, setBoxHoldMs] = useState(700);
 
   const [streamUrl, setStreamUrl] = useState("");
   const [status, setStatus] = useState(null);
@@ -57,6 +58,7 @@ export default function TurboLivePreview() {
         targetWidth,
         inferIntervalMs,
         jpegQuality,
+        boxHoldMs,
       });
 
       setStreamUrl(buildTurboMjpegUrl(sessionId));
@@ -281,12 +283,32 @@ export default function TurboLivePreview() {
             </div>
           </div>
 
+          <div>
+            <label className="mb-1 block text-sm text-slate-300">
+              Box hold: {boxHoldMs} ms
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="2000"
+              step="50"
+              value={boxHoldMs}
+              onChange={(event) => setBoxHoldMs(Number(event.target.value))}
+              className="w-full accent-lime-300"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Naikkan jika blur sering mati saat wajah menoleh. Turunkan jika box terasa terlalu lama tertinggal.
+            </p>
+          </div>
+
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300">
             <p>Frames: {status?.frame_counter ?? 0}</p>
             <p>Inferences: {status?.inference_counter ?? 0}</p>
             <p>Latency: {status?.latest_stats?.latency_ms ?? 0} ms</p>
             <p>Detected: {status?.latest_stats?.detection_count ?? 0}</p>
+            <p>Raw detected: {status?.latest_stats?.raw_detection_count ?? 0}</p>
             <p>Redacted: {status?.latest_stats?.redacted_count ?? 0}</p>
+            <p>Box hold: {status?.latest_stats?.box_hold_ms ?? boxHoldMs} ms</p>
           </div>
 
           <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs text-cyan-100">
