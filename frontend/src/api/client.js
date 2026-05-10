@@ -139,6 +139,22 @@ export async function approveGovernmentAccessRequest({
   return response.data;
 }
 
+export async function getGovernmentAccessRequest({
+  requestId,
+  governmentToken,
+}) {
+  const response = await apiClient.get(
+    `/api/government/access-requests/${requestId}`,
+    {
+      headers: {
+        "X-Government-Token": governmentToken,
+      },
+    },
+  );
+
+  return response.data;
+}
+
 export async function downloadGovernmentOriginal({
   requestId,
   accessToken,
@@ -271,5 +287,51 @@ export async function getTurboLiveStatus(sessionId = "default") {
 
 export function buildTurboMjpegUrl(sessionId = "default") {
   return `${API_BASE_URL}/api/live/turbo/mjpeg?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}`;
+}
+
+
+export async function getVaultRecord(recordId) {
+  const response = await apiClient.get(`/api/vault/records/${recordId}`);
+  return response.data;
+}
+
+export async function rotateVaultKey(cryptoAdminToken = "privai-crypto-admin-demo-token") {
+  const response = await apiClient.post(
+    "/api/crypto/rotate-vault-key",
+    null,
+    {
+      headers: {
+        "X-Crypto-Admin-Token": cryptoAdminToken,
+      },
+    },
+  );
+
+  return response.data;
+}
+
+
+export async function getAuditLogs({
+  limit = 50,
+  recordId = "",
+  zone = "",
+  eventType = "",
+} = {}) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+
+  if (recordId?.trim()) {
+    params.set("record_id", recordId.trim());
+  }
+
+  if (zone?.trim()) {
+    params.set("zone", zone.trim());
+  }
+
+  if (eventType?.trim()) {
+    params.set("event_type", eventType.trim());
+  }
+
+  const response = await apiClient.get(`/api/audit-logs?${params.toString()}`);
+  return response.data;
 }
 

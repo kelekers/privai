@@ -1,14 +1,19 @@
-import { useEffect, useState } from "react";
-import { Loader2, SlidersHorizontal, RotateCcw, Save } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import {
   getRuntimePolicy,
   resetRuntimePolicy,
   updateRuntimePolicy,
 } from "../api/client";
+import Badge from "./ui/Badge";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
+import Input from "./ui/Input";
+import Select from "./ui/Select";
 
 const CLASS_PRESETS = ["KTP", "SIM", "Paspor", "NIK_Teks", "Wajah", "Plat_Nomor"];
 
-function splitClassInput(value) {
+function splitCsv(value) {
   return value
     .split(",")
     .map((item) => item.trim())
@@ -28,18 +33,17 @@ export default function DynamicInjectionPanel({ onApplyToForm }) {
   const [disabledClasses, setDisabledClasses] = useState("");
   const [labelText, setLabelText] = useState("REDACTED");
   const [injectionNote, setInjectionNote] = useState("");
-
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  async function loadPolicy() {
+  const loadPolicy = useCallback(async () => {
     setIsLoading(true);
     setError("");
 
     try {
       const data = await getRuntimePolicy();
-      const policy = data.policy;
+      const policy = data.policy || {};
 
       setPolicyName(policy.policy_name || "");
       setConfidenceThreshold(policy.confidence_threshold ?? 0.35);
@@ -50,16 +54,17 @@ export default function DynamicInjectionPanel({ onApplyToForm }) {
       setLabelText(policy.label_text || "REDACTED");
       setInjectionNote(policy.injection_note || "");
       setStatus("Runtime policy loaded.");
-    } catch (err) {
+    } catch {
       setError("Gagal membaca runtime policy.");
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadPolicy();
-  }, []);
+    const timer = window.setTimeout(loadPolicy, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadPolicy]);
 
   async function handleSave() {
     setIsLoading(true);
@@ -72,14 +77,14 @@ export default function DynamicInjectionPanel({ onApplyToForm }) {
         confidence_threshold: Number(confidenceThreshold),
         profile,
         redaction_mode: redactionMode,
-        active_classes: splitClassInput(activeClasses),
-        disabled_classes: splitClassInput(disabledClasses),
+        active_classes: splitCsv(activeClasses),
+        disabled_classes: splitCsv(disabledClasses),
         label_text: labelText,
         injection_note: injectionNote,
       };
 
       const data = await updateRuntimePolicy(payload);
-      setStatus(`Saved: ${data.policy.policy_name}`);
+      setStatus(`Saved: ${data.policy?.policy_name || policyName}`);
     } catch (err) {
       const detail = err?.response?.data?.detail || "Gagal menyimpan runtime policy.";
       setError(typeof detail === "string" ? detail : JSON.stringify(detail));
@@ -97,7 +102,7 @@ export default function DynamicInjectionPanel({ onApplyToForm }) {
       await resetRuntimePolicy();
       await loadPolicy();
       setStatus("Runtime policy reset to default.");
-    } catch (err) {
+    } catch {
       setError("Gagal reset runtime policy.");
     } finally {
       setIsLoading(false);
@@ -116,56 +121,43 @@ export default function DynamicInjectionPanel({ onApplyToForm }) {
     setStatus("Policy applied to redaction form.");
   }
 
-  function toggleDisabledClass(className) {
-    const current = splitClassInput(disabledClasses);
-
-    if (current.includes(className)) {
-      setDisabledClasses(current.filter((item) => item !== className).join(","));
-    } else {
-      setDisabledClasses([...current, className].join(","));
-    }
-  }
-
   return (
-    <section className="rounded-3xl border border-purple-300/20 bg-purple-400/10 p-5">
-      <div className="mb-4 flex items-start gap-3">
-        <div className="rounded-2xl bg-purple-300/10 p-2.5 text-purple-200">
-          <SlidersHorizontal size={22} />
+    <Card>
+      <div className="mb-5 flex items-start gap-3">
+        <div className="rounded-2xl bg-sky-50 p-3 text-sky-600 ring-1 ring-sky-100">
+          <SlidersHorizontal size={24} />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-white">Dynamic Injection Panel</h2>
-          <p className="text-sm text-slate-400">
-            Ubah runtime policy tanpa mengubah source code. Aman karena hanya menerima key yang divalidasi.
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-950">Runtime Policy Editor</h2>
+            <Badge tone="sky">Whitelist keys only</Badge>
+          </div>
+          <p className="text-sm leading-6 text-slate-600">
+            Mengubah threshold, mode redaction, class policy, dan label tanpa eval atau arbitrary code execution.
           </p>
         </div>
       </div>
 
       {error && (
-        <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-100">
+        <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">
           {error}
         </div>
       )}
 
       {status && (
-        <div className="mb-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">
+        <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-800">
           {status}
         </div>
       )}
 
-      <div className="space-y-3">
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Policy name</label>
-          <input
-            value={policyName}
-            onChange={(event) => setPolicyName(event.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-purple-300/60"
-          />
-        </div>
+      <div className="space-y-4">
+        <Input label="Policy name" value={policyName} onChange={(event) => setPolicyName(event.target.value)} />
 
         <div>
-          <label className="mb-1 block text-sm text-slate-300">
-            Confidence threshold: {Number(confidenceThreshold).toFixed(2)}
-          </label>
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-sm font-medium text-slate-700">Confidence threshold</label>
+            <Badge tone="slate">{Number(confidenceThreshold).toFixed(2)}</Badge>
+          </div>
           <input
             type="range"
             min="0.01"
@@ -173,121 +165,93 @@ export default function DynamicInjectionPanel({ onApplyToForm }) {
             step="0.01"
             value={confidenceThreshold}
             onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
-            className="w-full accent-purple-300"
+            className="w-full accent-sky-600"
           />
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm text-slate-300">Profile</label>
-            <select
-              value={profile}
-              onChange={(event) => setProfile(event.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-purple-300/60"
+        <div className="grid gap-4 md:grid-cols-2">
+          <Select label="Profile" value={profile} onChange={(event) => setProfile(event.target.value)}>
+            <option value="government">government</option>
+            <option value="live_webcam">live_webcam</option>
+          </Select>
+
+          <Select label="Redaction mode" value={redactionMode} onChange={(event) => setRedactionMode(event.target.value)}>
+            <option value="black_box">black_box</option>
+            <option value="blur">blur</option>
+            <option value="pixelate">pixelate</option>
+          </Select>
+        </div>
+
+        <Input
+          label="Active classes"
+          value={activeClasses}
+          onChange={(event) => setActiveClasses(event.target.value)}
+          placeholder="KTP,SIM,Paspor,NIK_Teks,Wajah,Plat_Nomor"
+        />
+
+        <Input
+          label="Disabled classes"
+          value={disabledClasses}
+          onChange={(event) => setDisabledClasses(event.target.value)}
+          placeholder="Contoh: Wajah,Plat_Nomor"
+        />
+
+        <div className="flex flex-wrap gap-2">
+          {CLASS_PRESETS.map((className) => (
+            <button
+              key={className}
+              type="button"
+              onClick={() => {
+                const current = splitCsv(disabledClasses);
+                setDisabledClasses(
+                  current.includes(className)
+                    ? current.filter((item) => item !== className).join(",")
+                    : [...current, className].join(","),
+                );
+              }}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
             >
-              <option value="government">government</option>
-              <option value="live_webcam">live_webcam</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm text-slate-300">Redaction mode</label>
-            <select
-              value={redactionMode}
-              onChange={(event) => setRedactionMode(event.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-purple-300/60"
-            >
-              <option value="black_box">black_box</option>
-              <option value="blur">blur</option>
-              <option value="pixelate">pixelate</option>
-            </select>
-          </div>
+              {className}
+            </button>
+          ))}
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Active classes</label>
-          <input
-            value={activeClasses}
-            onChange={(event) => setActiveClasses(event.target.value)}
-            placeholder="KTP,SIM,Paspor,NIK_Teks,Wajah,Plat_Nomor"
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-purple-300/60"
-          />
-        </div>
+        <Input label="Label text" value={labelText} onChange={(event) => setLabelText(event.target.value)} maxLength={30} />
 
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Disabled classes</label>
-          <input
-            value={disabledClasses}
-            onChange={(event) => setDisabledClasses(event.target.value)}
-            placeholder="Contoh: Wajah,Plat_Nomor"
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-purple-300/60"
-          />
-
-          <div className="mt-2 flex flex-wrap gap-2">
-            {CLASS_PRESETS.map((className) => (
-              <button
-                key={className}
-                type="button"
-                onClick={() => toggleDisabledClass(className)}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 hover:bg-white/10"
-              >
-                {className}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Label text</label>
-          <input
-            value={labelText}
-            onChange={(event) => setLabelText(event.target.value)}
-            maxLength={30}
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-purple-300/60"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Injection note</label>
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-slate-700">Injection note</span>
           <textarea
             value={injectionNote}
             onChange={(event) => setInjectionNote(event.target.value)}
             maxLength={240}
             rows={3}
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-purple-300/60"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
           />
+        </label>
+
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
+          Security note: no eval, no arbitrary code, validated fields only.
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isLoading}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-purple-300 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-purple-200 disabled:opacity-60"
-          >
-            {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-            Save
-          </button>
+          <Button onClick={handleSave} disabled={isLoading}>
+            {isLoading ? <Loader2 className="animate-spin" size={18} /> : <ShieldCheck size={18} />}
+            Save Policy
+          </Button>
 
-          <button
-            type="button"
-            onClick={handleApplyToForm}
-            className="rounded-2xl border border-purple-300/30 bg-purple-300/10 px-4 py-3 text-sm font-semibold text-purple-100 hover:bg-purple-300/20"
-          >
-            Apply to Form
-          </button>
-
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={isLoading}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-white/10 disabled:opacity-60"
-          >
-            <RotateCcw size={18} />
+          <Button variant="secondary" onClick={handleReset} disabled={isLoading}>
+            <RefreshCw size={18} />
             Reset
-          </button>
+          </Button>
+
+          {onApplyToForm && (
+            <Button variant="soft" onClick={handleApplyToForm}>
+              <SlidersHorizontal size={18} />
+              Apply to Form
+            </Button>
+          )}
         </div>
       </div>
-    </section>
+    </Card>
   );
 }
