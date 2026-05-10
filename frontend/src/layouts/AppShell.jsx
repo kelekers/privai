@@ -57,16 +57,16 @@ const navItems = [
     description: "Secondary track",
   },
   {
+    id: "audit-log",
+    label: "Audit Log",
+    icon: Activity,
+    description: "Security trace",
+  },
+  {
     id: "metrics",
     label: "Metrics",
     icon: Gauge,
     description: "System status",
-  },
-  {
-    id: "legacy",
-    label: "Legacy Console",
-    icon: Activity,
-    description: "Old all-in-one UI",
   },
 ];
 
@@ -81,7 +81,7 @@ export default function AppShell({
     <div className="min-h-screen text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-[1500px] gap-5 px-4 py-4">
         <aside className="hidden w-[290px] shrink-0 lg:block">
-          <div className="sticky top-4 rounded-[1.65rem] border border-slate-200/80 bg-white/92 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="sticky top-4 rounded-[1.65rem] border border-slate-200/80 bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur">
             <div className="mb-5 rounded-[1.35rem] bg-gradient-to-br from-sky-50 to-teal-50 p-4 ring-1 ring-sky-100">
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-sky-700 shadow-sm">
                 <Building2 size={24} />
@@ -117,7 +117,7 @@ export default function AppShell({
                     <span
                       className={[
                         "flex h-9 w-9 items-center justify-center rounded-xl transition",
-                        active ? "bg-white/18 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-white",
+                        active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-white",
                       ].join(" ")}
                     >
                       <Icon size={18} />
@@ -155,7 +155,7 @@ export default function AppShell({
         </aside>
 
         <main className="min-w-0 flex-1">
-          <header className="mb-4 rounded-[1.65rem] border border-slate-200/80 bg-white/88 px-5 py-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] backdrop-blur">
+          <header className="mb-4 rounded-[1.65rem] border border-slate-200/80 bg-white/90 px-5 py-4 shadow-[0_12px_35px_rgba(15,23,42,0.06)] backdrop-blur">
             <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
               <div>
                 <div className="mb-2 flex flex-wrap items-center gap-2">

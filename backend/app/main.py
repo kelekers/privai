@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import json
 import base64
 from pathlib import Path
 import os
@@ -26,6 +27,7 @@ from app.core.runtime_policy import (
     update_runtime_policy,
 )
 from app.db.database import SessionLocal, init_db
+from app.db.models import AuditLog
 from app.db.repositories import (
     approve_government_access_request,
     create_audit_log,
@@ -1118,6 +1120,75 @@ def get_redacted_file(filename: str):
         media_type=guess_media_type(filename),
         filename=filename,
     )
+
+
+
+
+@app.get("/api/audit-logs")
+def get_audit_logs(
+    limit: int = Query(default=50, ge=1, le=200),
+    record_id: str | None = Query(default=None),
+    zone: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
+):
+    with SessionLocal() as db:
+        query = db.query(AuditLog)
+
+        if record_id:
+            query = query.filter(AuditLog.record_id == record_id)
+
+        if zone:
+            query = query.filter(AuditLog.zone == zone)
+
+        if event_type:
+            query = query.filter(AuditLog.event_type == event_type)
+
+        rows = (
+            query
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+        logs = []
+
+        for row in rows:
+            try:
+                details = json.loads(row.details_json or "{}")
+            except Exception:
+                details = {
+                    "raw": row.details_json,
+                }
+
+            logs.append(
+                {
+                    "id": row.id,
+                    "record_id": row.record_id,
+                    "zone": row.zone,
+                    "event_type": row.event_type,
+                    "actor": row.actor,
+                    "action": row.action,
+                    "details": details,
+                    "created_at": row.created_at.isoformat()
+                    if row.created_at
+                    else None,
+                }
+            )
+
+        return {
+            "logs": logs,
+            "count": len(logs),
+            "filters": {
+                "record_id": record_id,
+                "zone": zone,
+                "event_type": event_type,
+                "limit": limit,
+            },
+            "note": (
+                "Audit logs record security-relevant events such as redaction, vault storage, "
+                "runtime policy updates, key rotation, access request, approval, and authorized original decryption."
+            ),
+        }
 
 
 @app.get("/api/storage/records")

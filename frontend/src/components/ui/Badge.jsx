@@ -4,6 +4,7 @@
   amber: "border-amber-100 bg-amber-50 text-amber-700",
   red: "border-red-100 bg-red-50 text-red-700",
   slate: "border-slate-200 bg-slate-50 text-slate-600",
+  teal: "border-teal-100 bg-teal-50 text-teal-700",
   violet: "border-violet-100 bg-violet-50 text-violet-700",
 };
 

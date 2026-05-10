@@ -1,39 +1,24 @@
-﻿import { useEffect, useRef, useState } from "react";
-import {
-  Camera,
-  CameraOff,
-  Loader2,
-  Play,
-  Square,
-  Video,
-  Zap,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Activity, Loader2, Play, Square, Video } from "lucide-react";
 import { redactLiveFrame } from "../api/client";
-
-const CLASS_PRESETS = ["KTP", "SIM", "Paspor", "NIK_Teks", "Wajah", "Plat_Nomor"];
-
-function splitClassInput(value) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
+import Badge from "./ui/Badge";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
+import Input from "./ui/Input";
+import Select from "./ui/Select";
 
 export default function LiveWebcamDemo() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
-
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isContinuous, setIsContinuous] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [redactionMode, setRedactionMode] = useState("blur");
   const [activeClasses, setActiveClasses] = useState("");
   const [disabledClasses, setDisabledClasses] = useState("");
-
   const [redactedImage, setRedactedImage] = useState("");
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
@@ -43,11 +28,7 @@ export default function LiveWebcamDemo() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: "user",
-        },
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
         audio: false,
       });
 
@@ -59,9 +40,18 @@ export default function LiveWebcamDemo() {
       }
 
       setIsCameraOn(true);
-    } catch (err) {
+    } catch {
       setError("Tidak bisa mengakses kamera. Pastikan izin kamera diberikan dan gunakan localhost.");
     }
+  }
+
+  function stopContinuous() {
+    if (intervalRef.current) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    setIsContinuous(false);
   }
 
   function stopCamera() {
@@ -91,25 +81,10 @@ export default function LiveWebcamDemo() {
 
       const width = video.videoWidth || 640;
       const height = video.videoHeight || 480;
-
       canvas.width = width;
       canvas.height = height;
-
-      const context = canvas.getContext("2d");
-      context.drawImage(video, 0, 0, width, height);
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            reject(new Error("Failed to capture webcam frame."));
-            return;
-          }
-
-          resolve(blob);
-        },
-        "image/jpeg",
-        0.82,
-      );
+      canvas.getContext("2d").drawImage(video, 0, 0, width, height);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Failed to capture webcam frame."))), "image/jpeg", 0.82);
     });
   }
 
@@ -121,7 +96,6 @@ export default function LiveWebcamDemo() {
 
     try {
       const frameBlob = await captureFrameBlob();
-
       const data = await redactLiveFrame({
         frameBlob,
         confidenceThreshold,
@@ -131,12 +105,10 @@ export default function LiveWebcamDemo() {
       });
 
       setRedactedImage(`data:${data.mime_type};base64,${data.frame_image_base64}`);
-
       setStats({
         latencyMs: data.latency_ms,
         detectionCount: data.detection_count,
         redactedCount: data.redacted_count,
-        detectedClasses: data.detected_classes || [],
         storagePolicy: data.storage_policy,
       });
     } catch (err) {
@@ -154,189 +126,121 @@ export default function LiveWebcamDemo() {
     }
 
     if (intervalRef.current) return;
-
     setIsContinuous(true);
-
-    intervalRef.current = setInterval(() => {
-      processOneFrame();
-    }, 900);
-  }
-
-  function stopContinuous() {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    setIsContinuous(false);
-  }
-
-  function toggleDisabledClass(className) {
-    const current = splitClassInput(disabledClasses);
-
-    if (current.includes(className)) {
-      setDisabledClasses(current.filter((item) => item !== className).join(","));
-    } else {
-      setDisabledClasses([...current, className].join(","));
-    }
+    intervalRef.current = window.setInterval(processOneFrame, 900);
   }
 
   useEffect(() => {
     return () => {
-      stopCamera();
+      if (intervalRef.current) window.clearInterval(intervalRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
   return (
-    <section className="rounded-3xl border border-teal-300/20 bg-teal-400/10 p-5">
-      <div className="mb-4 flex items-start gap-3">
-        <div className="rounded-2xl bg-teal-300/10 p-2.5 text-teal-200">
-          <Video size={22} />
+    <Card>
+      <div className="mb-5 flex items-start gap-3">
+        <div className="rounded-2xl bg-teal-50 p-3 text-teal-600 ring-1 ring-teal-100">
+          <Video size={24} />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-white">Live Webcam Privacy Filter</h2>
-          <p className="text-sm text-slate-400">
-            Secondary development track. Frame diproses secara ephemeral, tidak disimpan ke Operational Zone atau Sovereign Vault.
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-950">Browser Webcam Mode</h2>
+            <Badge tone="teal">Ephemeral frames</Badge>
+          </div>
+          <p className="text-sm leading-6 text-slate-600">
+            Frame webcam diproses sementara dan tidak disimpan di Operational Zone atau Sovereign Vault.
           </p>
         </div>
       </div>
 
-      {error && (
-        <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-100">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-4">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-white">Original Webcam</h3>
-            <span className="rounded-full bg-slate-400/10 px-3 py-1 text-xs text-slate-300">
-              Browser stream
-            </span>
+            <h3 className="font-bold text-slate-950">Original Webcam</h3>
+            <Badge tone={isCameraOn ? "emerald" : "slate"}>{isCameraOn ? "camera on" : "camera off"}</Badge>
           </div>
-
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            className="aspect-video w-full rounded-2xl bg-black object-cover"
-          />
-
+          <video ref={videoRef} muted playsInline className="aspect-video w-full rounded-2xl bg-slate-950 object-cover" />
           <canvas ref={canvasRef} className="hidden" />
 
           <div className="mt-4 grid gap-2 md:grid-cols-2">
             {!isCameraOn ? (
-              <button
-                type="button"
-                onClick={startCamera}
-                className="flex items-center justify-center gap-2 rounded-2xl bg-teal-300 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-teal-200"
-              >
-                <Camera size={18} />
+              <Button onClick={startCamera}>
+                <Video size={18} />
                 Start Camera
-              </button>
+              </Button>
             ) : (
-              <button
-                type="button"
-                onClick={stopCamera}
-                className="flex items-center justify-center gap-2 rounded-2xl border border-red-300/30 bg-red-300/10 px-4 py-3 text-sm font-semibold text-red-100 hover:bg-red-300/20"
-              >
-                <CameraOff size={18} />
+              <Button variant="danger" onClick={stopCamera}>
+                <Square size={18} />
                 Stop Camera
-              </button>
+              </Button>
             )}
 
-            <button
-              type="button"
-              onClick={processOneFrame}
-              disabled={!isCameraOn || isProcessing}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-teal-300/30 bg-teal-300/10 px-4 py-3 text-sm font-semibold text-teal-100 hover:bg-teal-300/20 disabled:opacity-60"
-            >
-              {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Zap size={18} />}
+            <Button variant="soft" onClick={processOneFrame} disabled={!isCameraOn || isProcessing}>
+              {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Activity size={18} />}
               Process Frame
-            </button>
+            </Button>
           </div>
 
           <div className="mt-2 grid gap-2 md:grid-cols-2">
             {!isContinuous ? (
-              <button
-                type="button"
-                onClick={startContinuous}
-                disabled={!isCameraOn}
-                className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-white/10 disabled:opacity-60"
-              >
+              <Button variant="secondary" onClick={startContinuous} disabled={!isCameraOn}>
                 <Play size={18} />
                 Start Continuous
-              </button>
+              </Button>
             ) : (
-              <button
-                type="button"
-                onClick={stopContinuous}
-                className="flex items-center justify-center gap-2 rounded-2xl border border-yellow-300/30 bg-yellow-300/10 px-4 py-3 text-sm font-semibold text-yellow-100 hover:bg-yellow-300/20"
-              >
+              <Button variant="danger" onClick={stopContinuous}>
                 <Square size={18} />
                 Stop Continuous
-              </button>
+              </Button>
             )}
-
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
               Status: {isContinuous ? "continuous" : isProcessing ? "processing" : "idle"}
             </div>
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-4">
+        <div className="rounded-[1.25rem] border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-white">Redacted Webcam Output</h3>
-            <span className="rounded-full bg-teal-400/10 px-3 py-1 text-xs text-teal-200">
-              Ephemeral blur
-            </span>
+            <h3 className="font-bold text-slate-950">Redacted Webcam Output</h3>
+            <Badge tone="teal">Preview</Badge>
           </div>
 
           {redactedImage ? (
-            <img
-              src={redactedImage}
-              alt="Redacted webcam frame"
-              className="aspect-video w-full rounded-2xl bg-black object-cover"
-            />
+            <img src={redactedImage} alt="Redacted webcam frame" className="aspect-video w-full rounded-2xl bg-slate-950 object-cover" />
           ) : (
-            <div className="flex aspect-video items-center justify-center rounded-2xl border border-dashed border-white/10 text-sm text-slate-500">
-              Hasil sensor webcam akan muncul di sini.
+            <div className="flex aspect-video items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+              Redacted webcam output will appear here.
             </div>
           )}
 
           {stats && (
             <div className="mt-4 grid gap-2 text-sm md:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs text-slate-500">Latency</p>
-                <p className="font-semibold text-white">{stats.latencyMs} ms</p>
+                <p className="font-bold text-slate-950">{stats.latencyMs} ms</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs text-slate-500">Detected</p>
-                <p className="font-semibold text-white">{stats.detectionCount}</p>
+                <p className="font-bold text-slate-950">{stats.detectionCount}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs text-slate-500">Redacted</p>
-                <p className="font-semibold text-white">{stats.redactedCount}</p>
+                <p className="font-bold text-slate-950">{stats.redactedCount}</p>
               </div>
-            </div>
-          )}
-
-          {stats?.storagePolicy && (
-            <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-xs text-emerald-100">
-              Stored in Operational Zone: {String(stats.storagePolicy.stored_in_operational_zone)}
-              <br />
-              Stored in Sovereign Vault: {String(stats.storagePolicy.stored_in_sovereign_vault)}
             </div>
           )}
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm text-slate-300">
-            Confidence threshold: {Number(confidenceThreshold).toFixed(2)}
-          </label>
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-sm font-medium text-slate-700">Confidence threshold</label>
+            <Badge tone="slate">{Number(confidenceThreshold).toFixed(2)}</Badge>
+          </div>
           <input
             type="range"
             min="0.01"
@@ -344,58 +248,20 @@ export default function LiveWebcamDemo() {
             step="0.01"
             value={confidenceThreshold}
             onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
-            className="w-full accent-teal-300"
+            className="w-full accent-teal-600"
           />
         </div>
-
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Live redaction mode</label>
-          <select
-            value={redactionMode}
-            onChange={(event) => setRedactionMode(event.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-teal-300/60"
-          >
-            <option value="blur">blur</option>
-            <option value="pixelate">pixelate</option>
-            <option value="black_box">black_box</option>
-          </select>
-        </div>
+        <Select label="Live redaction mode" value={redactionMode} onChange={(event) => setRedactionMode(event.target.value)}>
+          <option value="blur">blur</option>
+          <option value="pixelate">pixelate</option>
+          <option value="black_box">black_box</option>
+        </Select>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Active classes</label>
-          <input
-            value={activeClasses}
-            onChange={(event) => setActiveClasses(event.target.value)}
-            placeholder="Kosongkan untuk default"
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-teal-300/60"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm text-slate-300">Disabled classes</label>
-          <input
-            value={disabledClasses}
-            onChange={(event) => setDisabledClasses(event.target.value)}
-            placeholder="Contoh: Wajah"
-            className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-teal-300/60"
-          />
-        </div>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <Input label="Active classes" value={activeClasses} onChange={(event) => setActiveClasses(event.target.value)} placeholder="Kosongkan untuk default" />
+        <Input label="Disabled classes" value={disabledClasses} onChange={(event) => setDisabledClasses(event.target.value)} placeholder="Contoh: Wajah" />
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {CLASS_PRESETS.map((className) => (
-          <button
-            key={className}
-            type="button"
-            onClick={() => toggleDisabledClass(className)}
-            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 hover:bg-white/10"
-          >
-            Toggle disable {className}
-          </button>
-        ))}
-      </div>
-    </section>
+    </Card>
   );
 }
