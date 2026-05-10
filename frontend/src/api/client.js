@@ -43,6 +43,7 @@ export async function redactImage({
   redactionMode,
   activeClasses,
   disabledClasses,
+  useRuntimePolicy,
 }) {
   const formData = new FormData();
   formData.append("file", file);
@@ -50,6 +51,10 @@ export async function redactImage({
   const params = new URLSearchParams();
   params.set("confidence_threshold", String(confidenceThreshold));
   params.set("profile", profile);
+
+  if (useRuntimePolicy) {
+    params.set("use_runtime_policy", "true");
+  }
 
   if (redactionMode && redactionMode !== "default") {
     params.set("redaction_mode", redactionMode);
@@ -70,4 +75,105 @@ export async function redactImage({
   });
 
   return response.data;
+}
+
+export async function getRuntimePolicy() {
+  const response = await apiClient.get("/api/runtime-policy");
+  return response.data;
+}
+
+export async function updateRuntimePolicy(policy) {
+  const response = await apiClient.put("/api/runtime-policy", policy);
+  return response.data;
+}
+
+export async function resetRuntimePolicy() {
+  const response = await apiClient.post("/api/runtime-policy/reset");
+  return response.data;
+}
+
+export async function createGovernmentAccessRequest({
+  recordId,
+  requester,
+  requesterRole,
+  reason,
+  governmentToken,
+}) {
+  const params = new URLSearchParams();
+  params.set("record_id", recordId);
+  params.set("requester", requester);
+  params.set("requester_role", requesterRole);
+  params.set("reason", reason);
+
+  const response = await apiClient.post(
+    `/api/government/access-requests?${params.toString()}`,
+    null,
+    {
+      headers: {
+        "X-Government-Token": governmentToken,
+      },
+    },
+  );
+
+  return response.data;
+}
+
+export async function approveGovernmentAccessRequest({
+  requestId,
+  approvedBy,
+  approverToken,
+}) {
+  const params = new URLSearchParams();
+  params.set("approved_by", approvedBy);
+
+  const response = await apiClient.post(
+    `/api/government/access-requests/${requestId}/approve?${params.toString()}`,
+    null,
+    {
+      headers: {
+        "X-Approver-Token": approverToken,
+      },
+    },
+  );
+
+  return response.data;
+}
+
+export async function downloadGovernmentOriginal({
+  requestId,
+  accessToken,
+  governmentToken,
+}) {
+  const response = await apiClient.get(
+    `/api/government/access-requests/${requestId}/secure-original`,
+    {
+      params: {
+        access_token: accessToken,
+      },
+      headers: {
+        "X-Government-Token": governmentToken,
+      },
+      responseType: "blob",
+    },
+  );
+
+  const contentDisposition = response.headers["content-disposition"] || "";
+  const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+  const filename = filenameMatch?.[1] || "privai_decrypted_original.jpg";
+
+  const blobUrl = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
+
+  return {
+    filename,
+    status: "downloaded",
+  };
 }

@@ -252,3 +252,49 @@ Operational Zone stores only:
 - redaction status
 
 The original file is encrypted and stored in Sovereign Vault only. Plaintext original access is not exposed in the normal user dashboard.
+
+## Sprint 5: Dynamic Injection and Government Access Console
+
+Sprint 5 adds runtime policy configuration and a government-only access console.
+
+### Dynamic Injection
+
+Dynamic Injection is implemented as validated runtime configuration.
+
+Supported runtime policy fields:
+
+```txt
+- policy_name
+- confidence_threshold
+- profile
+- redaction_mode
+- active_classes
+- disabled_classes
+- label_text
+- injection_note
+
+Security rule:
+
+No eval.
+No arbitrary code execution.
+Only whitelisted policy keys are accepted.
+All class names and redaction modes are validated.
+Runtime Policy API
+GET  /api/runtime-policy
+PUT  /api/runtime-policy
+POST /api/runtime-policy/reset
+Use Runtime Policy During Redaction
+curl.exe -X POST "http://127.0.0.1:8000/api/redact?use_runtime_policy=true" `
+  -F "file=@D:\Lomba\privai\sample\test.jpg"
+Government Access Console
+
+Raw original data is not accessible from the normal user dashboard.
+
+Controlled access flow:
+
+1. Create access request
+2. Approve request
+3. Issue one-time access token
+4. Download original through Government Access API / Vault Gateway
+5. Mark token as used
+6. Write audit log
